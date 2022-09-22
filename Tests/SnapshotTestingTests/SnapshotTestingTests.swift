@@ -43,6 +43,17 @@ final class SnapshotTestingTests: XCTestCase {
     """)
   }
 
+  @available(macOS 10.13, tvOS 11.0, *)
+  func testAnyAsJson() throws {
+    struct User: Encodable { let id: Int, name: String, bio: String }
+    let user = User(id: 1, name: "Blobby", bio: "Blobbed around the world.")
+
+    let data = try JSONEncoder().encode(user)
+    let any = try JSONSerialization.jsonObject(with: data, options: [])
+
+    assertSnapshot(matching: any, as: .json)
+  }
+
   func testAnySnapshotStringConvertible() {
     assertSnapshot(matching: "a" as Character, as: .dump, named: "character")
     assertSnapshot(matching: Data("Hello, world!".utf8), as: .dump, named: "data")
@@ -231,13 +242,14 @@ final class SnapshotTestingTests: XCTestCase {
     button.bezelStyle = .rounded
     button.title = "Push Me"
     button.sizeToFit()
+    button.appearance = NSAppearance(named: .aqua)
     if !ProcessInfo.processInfo.environment.keys.contains("GITHUB_WORKFLOW") {
       assertSnapshot(matching: button, as: .image)
       assertSnapshot(matching: button, as: .recursiveDescription)
     }
     #endif
   }
-  
+
   func testNSViewWithLayer() {
     #if os(macOS)
     let view = NSView()
@@ -274,6 +286,24 @@ final class SnapshotTestingTests: XCTestCase {
       assertSnapshot(matching: label, as: .image(precision: 0.9), named: platform)
       label.text = "Hello"
       assertSnapshot(matching: label, as: .image(precision: 0.9), named: platform)
+    }
+    #endif
+  }
+
+  func testImagePrecision() throws {
+    #if os(iOS) || os(tvOS) || os(macOS)
+    let imageURL = URL(fileURLWithPath: String(#file), isDirectory: false)
+            .deletingLastPathComponent()
+            .appendingPathComponent("__Fixtures__/testImagePrecision.reference.png")
+    #if os(iOS) || os(tvOS)
+    let image = try XCTUnwrap(UIImage(contentsOfFile: imageURL.path))
+    #elseif os(macOS)
+    let image = try XCTUnwrap(NSImage(byReferencing: imageURL))
+    #endif
+
+    assertSnapshot(matching: image, as: .image(precision: 0.995), named: "exact")
+    if #available(iOS 11.0, tvOS 11.0, macOS 10.13, *) {
+      assertSnapshot(matching: image, as: .image(perceptualPrecision: 0.98), named: "perceptual")
     }
     #endif
   }
@@ -1135,9 +1165,9 @@ final class SnapshotTestingTests: XCTestCase {
   }
   #endif
 
+  #if os(iOS)
   @available(iOS 13.0, *)
   func testSwiftUIView_iOS() {
-    #if os(iOS)
     struct MyView: SwiftUI.View {
       var body: some SwiftUI.View {
         HStack {
@@ -1156,12 +1186,12 @@ final class SnapshotTestingTests: XCTestCase {
     assertSnapshot(matching: view, as: .image(layout: .sizeThatFits, traits: .init(userInterfaceStyle: .light)), named: "size-that-fits")
     assertSnapshot(matching: view, as: .image(layout: .fixed(width: 200.0, height: 100.0), traits: .init(userInterfaceStyle: .light)), named: "fixed")
     assertSnapshot(matching: view, as: .image(layout: .device(config: .iPhoneSe), traits: .init(userInterfaceStyle: .light)), named: "device")
-    #endif
   }
+  #endif
 
+  #if os(tvOS)
   @available(tvOS 13.0, *)
   func testSwiftUIView_tvOS() {
-    #if os(tvOS)
     struct MyView: SwiftUI.View {
       var body: some SwiftUI.View {
         HStack {
@@ -1179,8 +1209,8 @@ final class SnapshotTestingTests: XCTestCase {
     assertSnapshot(matching: view, as: .image(layout: .sizeThatFits), named: "size-that-fits")
     assertSnapshot(matching: view, as: .image(layout: .fixed(width: 300.0, height: 100.0)), named: "fixed")
     assertSnapshot(matching: view, as: .image(layout: .device(config: .tv)), named: "device")
-    #endif
   }
+  #endif
 
   @available(*, deprecated)
   func testIsRecordingProxy() {
@@ -1210,7 +1240,7 @@ private let allContentSizes =
     ]
 #endif
 
-#if os(Linux)
+#if os(Linux) || os(Windows)
 extension SnapshotTestingTests {
   static var allTests : [(String, (SnapshotTestingTests) -> () throws -> Void)] {
     return [

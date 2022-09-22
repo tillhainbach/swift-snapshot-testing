@@ -56,7 +56,7 @@ public func assertSnapshot<Value, Format>(
 ///
 /// - Parameters:
 ///   - value: A value to compare against a reference.
-///   - snapshotting: A dictionary of names and strategies for serializing, deserializing, and comparing values.
+///   - strategies: A dictionary of names and strategies for serializing, deserializing, and comparing values.
 ///   - recording: Whether or not to record a new reference.
 ///   - timeout: The amount of time a snapshot must be generated in.
 ///   - file: The file in which failure occurred. Defaults to the file name of the test case in which this function was called.
@@ -90,7 +90,7 @@ public func assertSnapshots<Value, Format>(
 ///
 /// - Parameters:
 ///   - value: A value to compare against a reference.
-///   - snapshotting: An array of strategies for serializing, deserializing, and comparing values.
+///   - strategies: An array of strategies for serializing, deserializing, and comparing values.
 ///   - recording: Whether or not to record a new reference.
 ///   - timeout: The amount of time a snapshot must be generated in.
 ///   - file: The file in which failure occurred. Defaults to the file name of the test case in which this function was called.
@@ -235,6 +235,15 @@ public func verifySnapshot<Value, Format>(
       
       guard !recording, fileManager.fileExists(atPath: snapshotFileUrl.path) else {
         try snapshotting.diffing.toData(diffable).write(to: snapshotFileUrl)
+        #if !os(Linux) && !os(Windows)
+        if ProcessInfo.processInfo.environment.keys.contains("__XCODE_BUILT_PRODUCTS_DIR_PATHS") {
+          XCTContext.runActivity(named: "Attached Recorded Snapshot") { activity in
+            let attachment = XCTAttachment(contentsOfFile: snapshotFileUrl)
+            activity.add(attachment)
+          }
+        }
+        #endif
+
         return recording
           ? """
             Record mode is on. Turn record mode off and re-run "\(testName)" to test against the newly-recorded snapshot.
@@ -275,7 +284,7 @@ public func verifySnapshot<Value, Format>(
       try snapshotting.diffing.toData(diffable).write(to: failedSnapshotFileUrl)
 
       if !attachments.isEmpty {
-        #if !os(Linux)
+        #if !os(Linux) && !os(Windows)
         if ProcessInfo.processInfo.environment.keys.contains("__XCODE_BUILT_PRODUCTS_DIR_PATHS") {
           XCTContext.runActivity(named: "Attached Failure Diff") { activity in
             attachments.forEach {
@@ -298,8 +307,16 @@ public func verifySnapshot<Value, Format>(
 
             SnapshotTesting.diffTool = "ksdiff"
         """
+
+      let failureMessage: String
+      if let name = name {
+        failureMessage = "Snapshot \"\(name)\" does not match reference."
+      } else {
+        failureMessage = "Snapshot does not match reference."
+      }
+
       return """
-      Snapshot does not match reference.
+      \(failureMessage)
 
       \(diffMessage)
 
